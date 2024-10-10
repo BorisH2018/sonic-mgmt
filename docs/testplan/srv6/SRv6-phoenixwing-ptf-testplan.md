@@ -234,38 +234,137 @@ srv6/srv6_basic_sanity.py::test_check_bgp_neighbors PASSED               [100%]
 ```
 1. test_interface_on_each_node is to check if all interfaces are deteced from each node.
 2. test_check_bgp_neighbors is to check that underlay BGP sessions are up.
-   
 ### SRv6 VPN
 #### SRv6 VPN for single homing
-Publish VRF routes from PE1 to PE3, and run traffic from PE3 to P1. Use traffic to check VPN traffic works. Local PE and remote PE's MY_SID's add, delete and modification would be verified in this test case.
+Control plane configuration:
+1) Create test VRF (TEST) on all PEs and assign RD/RD in the format of ASN:PE_number as well as export/import policy. Put PE interface towards the PTF into vrf TEST and assign IPv4-address.
+2) Configure SRv6 Service SID distribution in BGP for L3VPN service per RFC 9252.
+3) Configure MH MP-BGP VPNv4 peerings beween the PE1-PE2, PE1-PE3, PE2-PE3 pairs. 
+
+Control Plane verification:
+1) Check on all PE's MY_SID table and verify that the corresponding local End.DT4 SIDs are there. Check the routing table on all PEs and make sure that all locators (see Fig.2-7) from all nodes are there. Check on the PEs that all other remote PEs BGP Prefix-SIDs came in.
+2) Verify using a ping the availability of all locators.
+3) Add another VRF (TEST1) with RD/RD in the format of ASN:PE_number+100, create similar export/import policy. Perform the steps above to verify local and remote SIDs.
+4) Remover VRF TEST1 from all PEs, verify that corresponding SIDs were removed an all PEs.
+
+
+Testing:
+Publish 1000 IPv4 prefixes from PTF (depends on its capability) into VRF TEST on all PEs, create 1:1 traffic flows between IPv4 address pairs and run traffic from PE1 to PE3, then from PE1 towards PE2. Packet rate should be set to 100 pps. If PTF allows frame size should use the IMIX. 
+
+Expected result:
+1) VPN END.DT4 SIDs ahould be correctly assigned and appear in the router's table.
+2) After removing VRF TEST1 its END.DT4 SID should be correctly deleted on local and remote PEs.
+3) All VPN traffic flows should flow between each PE pair and have no any drops.
+4) All PEs should correctly set up IPv6 Flow Lable and a traffic should be equally distributed  via DUT interfaces. 
+
+
 #### SRv6 VPN for Dual homing
-Publish VRF routes from PE1 and PE2 to PE3, and run traffic from PE3 to P1. Use traffic to check VPN traffic works with dual homing. Local PE and remote PE's MY_SID's add, delete and modification would be verified in this test case.
+The test setup is the same as in the test above.
 
-#### IGP local failure case
-Shut down port between P2 and PE3, use FRR zebra debug to check quick fixup kicked in for local link failure case.  Run VPN traffic check from PE3 to PE1 and PE2. Recover this link after the test.
+Testing:
+Publish 1000 IPv4 prefixes from PTF (depends on its capability) into VRF TEST on all PEs, create 1:1 traffic flows between IPv4 address pairs and run traffic from PE1 and PE2 towards PE3. Packet rate should be set to 100 pps. If PTF allows frame size should use the IMIX. 
 
-Use PTF to publish some V6 IGP routes to P1, a.k.a increase PE3's IGP level route scale. Need to make sure the quick fixup would be handled before IGP routes. 
+Expected result:
+1) VPN END.DT4 SIDs ahould be correctly assigned and appear in the router's table.
+2) After removing VRF TEST1 its END.DT4 SID should be correctly deleted on local and remote PEs.
+3) All VPN traffic flows should flow between each PE pair and have no any drops.
+4) All PEs should correctly set up IPv6 Flow Lable and a traffic should be equally distributed  via DUT interfaces. 
 
-#### IGP remote failure case
-Shut down the links (P2, P1), (P2, P3), (P2, P4) to simulate remote IGP failure.  Use FRR zebra debug to check quick fixup kicked in and IGP convergece would not impact overlay convergence. Run VPN traffic check from PE3 to PE1 and PE2. Recover this link after the test.
-
-Use PTF to publish some V6 IGP routes to P1, a.k.a increase PE3's IGP level route scale. Need to make sure the quick fixup would be handled before IGP routes. 
 
 #### BGP remote PE failure case
-Shut down the links (PE2, P1), (PE2, P3) to simulate remote PE ndoe failure. Use FRR zebra debug to check quick fixup kicked in. Run VPN traffic check from PE3 to PE1 and PE2. Recover this link after the test.
+The test setup is the same as in the test above.
+
+Testing:
+1) Run VPN traffic flows from PE3 to PE1 and PE2.
+2) Shut down the links (PE2, P1), (PE2, P3) to simulate remote PE node failure. Use FRR zebra debug to check quick fixup kicked in.
+3) Recover those links after the test.
+4) Write down the quiantity of lost packets.
+
+Expected result:
+
+Several tens of seconds BGP convergence.
 
 ### SRv6 Policy and SBFD
+#### Baseline configuration
+1) The test setup is the same as in the VPN for Single homing test.
+2) Additionalyy create VRF TEST2 on all PEs and assign RD/RD in the format of ASN:PE_number as well as export/import policy. Put PE interface towards the PTF into VRF TEST2, assign IPv6 address.
+3) Configure per-CE VPN End.DX4, End.DX6 SIDs.
 #### Verification of End End.DX4 and End.DX6 Functions
-Configure an SRv6 Policy on the PE3 router, ensuring segment list includes End End.DX4 and End.DX6 SID, verify that traffic behaves as expected.
-#### SRv6 policy with single or multiple candidate-paths 
-Configure multiple candidate-paths for one policy, and run traffic from PE3 to P1. Use traffic to check policy traffic works. 
-1. Configure candidate-path with different preference and enable S-BFD, verify that traffic behaves as expected. Shutdown S-BFD of the high preference candidate-path ,  the traffic switches to the lower-priority candidate-path.
-2. Configure multiple candidate-paths with identical preference and enable S-BFD, verify that traffic behaves as expected (ECMP over candidate-paths).
-#### SRv6 policies
-Deploy multiple SRv6 TE policies between the PEs, and enable S-BFD. Publish same routes from PE1 and PE2 respectively to PE3.
-1. Verify that traffic behaves as expected (ECMP over policies).
-2. Shutdown the S-BFD of one policy, verify that traffic behaves as expected.
+1) Configure two SRv6 Policies on the PE3 router towards PE1 with single Candidate Path and single segment list (SL) per each SR Policy: SL1 = {P2.P1,PE1,PE1 End.DX4}, SL2 = {P4,P3,PE1 End.DX6} with colors C1 and C2.
+2) Configure different BGP Color communities on PE1 (C1 and C2) and send C1 for VPN TEST, C2 for VPN TEST2 from PE1 towards PE3 for per-destination traffic steering.
+3) Run intra-VPN IPv4 and IPv6 traffic flows from PE3 towards PE1
+   
+Expected result:
+All VPN traffic flows should flow between PE3-PE1 pair and have no any drops.
+
+#### SRv6 policy with multiple SLs 
+1) Configure a SRv6 Policy with color C1 on the PE3 router towards PE1 with single Candidate Path
+2) Configure multiple (at least 4) SLs per CP, those SLs should have disjoint paths
+3) Configure equal weights on each SL.
+4) Send C1  BGP color community from PE1 towards PE3 for per-destination traffic steering.
+5) Run intra-VPN IPv4 and IPv6 traffic flows from PE3 towards PE1 and check that configured SR Policy works.
+6) Check that ECMP between all SLs works correctly.
+7) Assign higher weight for two SLs.
+8) Check that wECMP between all SLs works correctly.
+
+Expected result:
+1) All VPN traffic flows should flow between PE3-PE1 pair and have no any drops.
+2) Correct ECMP and wECMP between SLs.
+
+#### SRv6 policy with multiple candidate-paths 
+1) Configure multiple (at least 2) candidate-paths (CP) for one SR policy with color C1 on the PE3 router towards PE1 with single SL per CP, those SLs should have disjoint paths.
+2) Configure CP pereference higher on one of CPs, enable S-BFD on that CP between PE3 and PE1.
+3) Run intra-VPN IPv4 and IPv6 traffic flows from PE3 towards PE1 and check that configured SR Policy works.
+4) Shutdown S-BFD session of the high preference CP, verify that the traffic switches to the lower-priority CP.
+5) Measure the packet loss during switchover
+
+Expected result:
+1) All VPN traffic flows should flow between PE3-PE1 pair and have no any drops.
+2) Correct switchover from one CP to another with minimal traffic loss
+
 #### SRv6-TE and SRv6-BE hybrid mode
-Deploy SRv6 TE policy between PE1 and PE3 and SRv6 BE between PE2 and PE3. Publish same routes from PE1 and PE2 respectively to PE3.
-1. In this case, routes will recursion to the SRv6 TE Polic. Verify that traffic behaves as expected.
-2. Shutdown the SRv6 TE Polic, routes will recursion to the SRv6 BE, verify that traffic behaves as expected.
+1) Deploy SRv6 TE policy between PE1 and PE3 with color C3 and SRv6 BE between PE2 and PE3. Announce the same routes from PE1 and PE2 respectively to PE3.
+2) In this case, traffic should flow to the SRv6 TE Policy.
+3) Run intra-VPN IPv4 and IPv6 traffic flows from PE1 towards PE3 and check that configured SR Policy works
+4) Shutdown the configured SRv6 TE Policy,  verify that traffic was switching  to the SRv6 BE.
+5) 5) Measure the packet loss during switchover
+
+Expected result:
+1) All VPN traffic flows should flow between PE1-PE3 pair.
+2) Correct switchover to SRv6 BE with minimal traffic loss   
+
+   #### IGP local failure case
+Control plane configuration:
+1) Run ISIS L2 with the flat IPv6 topology on all routers: each link is a P2P, pick up any useful NET-numbers.
+2) Create test VRF (TEST) on all PEs and assign RD/RD in the format of ASN:PE_number as well as export/import policy.
+3) Configure MP-BGP VPNv4 peerings beween the PE1-PE2, PE1-PE3, PE2-PE3 pairs. 
+4) Configure L3 VPN over SRv6.
+   
+Control Plane verification:
+1) Verify that ISIS adjacensies are Up between all neighboring routers, SRv6 locators are advertised and reachable.
+2) Verify that the local and remote End.DT4 SIDs are there.
+
+
+Testing:
+1)Publish 1000 IPv4 prefixes from PTF (depends on its capability) into VRF TEST on all PEs, create 1:1 traffic flows between IPv4 address pairs. Packet rate should be set to 100 pps. If PTF allows frame size should use the IMIX. 
+2) Shut down the port between P2 and PE3, use FRR zebra debug to check quick fixup kicked in for local link failure case.  Run VPN traffic flows from PE3 to PE1 and PE2. Recover this link after the test.
+3) Use PTF to publish some V6 IGP routes to P1, a.k.a increase PE3's IGP level route scale. Need to make sure the quick fixup would be handled before IGP routes.
+4) Write down the quiantity of lost packets.
+
+Expected result:
+
+Sub-second IGP convergence.
+
+#### IGP remote failure case
+The test setup is the same as in the IGP local failure test case.
+
+Testing:
+1) Publish 1000 IPv4 prefixes from PTF (depends on its capability) into VRF TEST on all PEs, create 1:1 traffic flows between IPv4 address pairs. Packet rate should be set to 100 pps. If PTF allows frame size should use the IMIX. 
+2) Shut down the links (P2, P1), (P2, P3), (P2, P4) to simulate remote IGP failure.  Use FRR zebra debug to check quick fixup kicked in and IGP convergece would not impact overlay convergence.
+3) Run VPN traffic check from PE3 to PE1 and PE2. Recover this link after the test.
+4) Use PTF to publish some V6 IGP routes to P1, a.k.a increase PE3's IGP level route scale. Need to make sure the quick fixup would be handled before IGP routes. 
+3) Write down the quiantity of lost packets.
+   
+Expected result:
+
+Sub-second IGP convergence.
